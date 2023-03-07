@@ -140,6 +140,8 @@ type Controller struct {
 	minioClientSet clientset.Interface
 	// promClient is a clientset for Prometheus service monitor
 	promClient promclientset.Interface
+	// isOpenshift4 returns true if operator deployed in the Openshift 4 cluster.
+	isOpenshift4 bool
 	// statefulSetLister is able to list/get StatefulSets from a shared
 	// informer's store.
 	statefulSetLister appslisters.StatefulSetLister
@@ -204,7 +206,7 @@ type Controller struct {
 }
 
 // NewController returns a new sample controller
-func NewController(podName string, namespacesToWatch set.StringSet, kubeClientSet kubernetes.Interface, minioClientSet clientset.Interface, promClient promclientset.Interface, statefulSetInformer appsinformers.StatefulSetInformer, deploymentInformer appsinformers.DeploymentInformer, podInformer coreinformers.PodInformer, tenantInformer informers.TenantInformer, serviceInformer coreinformers.ServiceInformer, hostsTemplate, operatorVersion string) *Controller {
+func NewController(podName string, namespacesToWatch set.StringSet, kubeClientSet kubernetes.Interface, minioClientSet clientset.Interface, promClient promclientset.Interface, isOpenshift4 bool, statefulSetInformer appsinformers.StatefulSetInformer, deploymentInformer appsinformers.DeploymentInformer, podInformer coreinformers.PodInformer, tenantInformer informers.TenantInformer, serviceInformer coreinformers.ServiceInformer, hostsTemplate, operatorVersion string) *Controller {
 	// Create event broadcaster
 	// Add minio-controller types to the default Kubernetes Scheme so Events can be
 	// logged for minio-controller types.
@@ -236,6 +238,7 @@ func NewController(podName string, namespacesToWatch set.StringSet, kubeClientSe
 	controller := &Controller{
 		podName:                 podName,
 		namespacesToWatch:       namespacesToWatch,
+		isOpenshift4:            isOpenshift4,
 		kubeClientSet:           kubeClientSet,
 		minioClientSet:          minioClientSet,
 		promClient:              promClient,

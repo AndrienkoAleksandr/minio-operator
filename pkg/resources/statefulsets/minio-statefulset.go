@@ -318,7 +318,7 @@ func volumeMounts(t *miniov2.Tenant, pool *miniov2.Pool, operatorTLS bool, certV
 }
 
 // Builds the MinIO container for a Tenant.
-func poolMinioServerContainer(t *miniov2.Tenant, wsSecret *v1.Secret, skipEnvVars map[string][]byte, pool *miniov2.Pool, hostsTemplate string, opVersion string, operatorTLS bool, certVolumeSources []v1.VolumeProjection) v1.Container {
+func poolMinioServerContainer(t *miniov2.Tenant, wsSecret *v1.Secret, skipEnvVars map[string][]byte, pool *miniov2.Pool, hostsTemplate string, opVersion string, operatorTLS bool, certVolumeSources []v1.VolumeProjection, isOpenshift4 bool) v1.Container {
 	consolePort := miniov2.ConsolePort
 	if t.TLS() {
 		consolePort = miniov2.ConsoleTLSPort
@@ -358,7 +358,7 @@ func poolMinioServerContainer(t *miniov2.Tenant, wsSecret *v1.Secret, skipEnvVar
 		LivenessProbe:   t.Spec.Liveness,
 		ReadinessProbe:  t.Spec.Readiness,
 		StartupProbe:    t.Spec.Startup,
-		SecurityContext: poolContainerSecurityContext(pool),
+		SecurityContext: poolContainerSecurityContext(pool, isOpenshift4),
 	}
 }
 
@@ -389,7 +389,7 @@ func poolTopologySpreadConstraints(z *miniov2.Pool) []corev1.TopologySpreadConst
 }
 
 // Builds the security context for a Pool
-func poolSecurityContext(pool *miniov2.Pool, status *miniov2.PoolStatus) *v1.PodSecurityContext {
+func poolSecurityContext(pool *miniov2.Pool, status *miniov2.PoolStatus, isOpenshift4 bool) *v1.PodSecurityContext {
 	runAsNonRoot := true
 	var runAsUser int64 = 1000
 	var runAsGroup int64 = 1000
@@ -415,11 +415,16 @@ func poolSecurityContext(pool *miniov2.Pool, status *miniov2.PoolStatus) *v1.Pod
 		fsGroupChangePolicy := corev1.FSGroupChangeOnRootMismatch
 		securityContext.FSGroupChangePolicy = &fsGroupChangePolicy
 	}
+
+	if pool != nil && pool.SecurityContext == nil && isOpenshift4 {
+		securityContext = corev1.PodSecurityContext{}
+	}
+
 	return &securityContext
 }
 
 // Builds the security context for containers in a Pool
-func poolContainerSecurityContext(pool *miniov2.Pool) *v1.SecurityContext {
+func poolContainerSecurityContext(pool *miniov2.Pool, isOpenshift4 bool) *v1.SecurityContext {
 	runAsNonRoot := true
 	var runAsUser int64 = 1000
 	var runAsGroup int64 = 1000
@@ -444,7 +449,10 @@ func poolContainerSecurityContext(pool *miniov2.Pool) *v1.SecurityContext {
 
 	if pool != nil && pool.ContainerSecurityContext != nil {
 		containerSecurityContext = *pool.ContainerSecurityContext
+	} else if isOpenshift4 {
+		containerSecurityContext = corev1.SecurityContext{}
 	}
+
 	return &containerSecurityContext
 }
 
@@ -464,6 +472,7 @@ type NewPoolArgs struct {
 	OperatorTLS     bool
 	OperatorCATLS   bool
 	OperatorImage   string
+	IsOpenshift4    bool
 }
 
 // NewPool creates a new StatefulSet for the given Cluster.
@@ -479,6 +488,7 @@ func NewPool(args *NewPoolArgs) *appsv1.StatefulSet {
 	operatorTLS := args.OperatorTLS
 	operatorCATLS := args.OperatorCATLS
 	operatorImage := args.OperatorImage
+	isOpenshift4 := args.IsOpenshift4
 
 	var podVolumes []corev1.Volume
 	replicas := pool.Servers
@@ -825,7 +835,7 @@ func NewPool(args *NewPoolArgs) *appsv1.StatefulSet {
 	}
 
 	containers := []corev1.Container{
-		poolMinioServerContainer(t, wsSecret, skipEnvVars, pool, hostsTemplate, operatorVersion, operatorTLS, certVolumeSources),
+		poolMinioServerContainer(t, wsSecret, skipEnvVars, pool, hostsTemplate, operatorVersion, operatorTLS, certVolumeSources, isOpenshift4),
 		getSideCarContainer(t, operatorImage),
 	}
 
@@ -876,7 +886,7 @@ func NewPool(args *NewPoolArgs) *appsv1.StatefulSet {
 					SchedulerName:             t.Scheduler.Name,
 					Tolerations:               poolTolerations(pool),
 					TopologySpreadConstraints: poolTopologySpreadConstraints(pool),
-					SecurityContext:           poolSecurityContext(pool, poolStatus),
+					SecurityContext:           poolSecurityContext(pool, poolStatus, isOpenshift4),
 					ServiceAccountName:        t.Spec.ServiceAccountName,
 					PriorityClassName:         t.Spec.PriorityClassName,
 				},

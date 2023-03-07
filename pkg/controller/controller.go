@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/minio/minio-go/v7/pkg/set"
@@ -125,7 +126,16 @@ func StartOperator() {
 	podName := os.Getenv(HostnameEnv)
 	if podName == "" {
 		klog.Info("Could not determine $%s, defaulting to pod name: operator-pod", HostnameEnv)
-		podName = "operator-pod"
+	}
+
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		klog.Error(err, "Error building discovery client")
+	}
+
+	isOpenshift4, err := cluster.IsOpenshift4(discoveryClient)
+	if err != nil {
+		klog.Error(err, "Failed to detect k8s platform")
 	}
 
 	mainController := cluster.NewController(
@@ -134,6 +144,7 @@ func StartOperator() {
 		kubeClient,
 		controllerClient,
 		promClient,
+		isOpenshift4,
 		kubeInformerFactory.Apps().V1().StatefulSets(),
 		kubeInformerFactory.Apps().V1().Deployments(),
 		kubeInformerFactory.Core().V1().Pods(),
